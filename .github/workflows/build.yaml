@@ -39,11 +39,6 @@ jobs:
           set -eu
 
           version=${{ needs.prepare.outputs.version }}
-          if [[ "${version}" == *-* ]]; then
-            # version was non-final - normalise to PEP-440 dev release
-            version="${version%%-*}.dev0"
-          fi
-
           echo "version: ${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 

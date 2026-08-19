@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import re
 import subprocess
 import sys
 
@@ -14,16 +13,11 @@ EXTENSION_DEFINITIONS_FILE = os.path.join(repo_dir, 'extension-definitions.yaml'
 LOCAL_ARTEFACTS = ('delivery-service', 'extensions')
 
 
-def to_pep440(version: str) -> str:
-    # semver pre-release suffix (e.g. 0.1368.0-dev) → PEP-440 dev release (0.1368.0.dev0)
-    return re.sub(r'-([a-zA-Z].*)$', r'.\1 0', version).replace(' ', '')
-
-
 def main():
     next_version = sys.stdin.read().strip()
 
     subprocess.run(
-        ['uv', 'version', to_pep440(next_version)],
+        ['uv', 'version', next_version],
         cwd=repo_dir,
         check=True,
     )
