@@ -31,10 +31,12 @@ RUN apk add --no-cache \
  && mkdir /freshclam \
  && chown clamav /freshclam
 
-ARG ODG_CORE_LIBS_VERSION
-ENV VIRTUAL_ENV=/opt/venv
+ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-COPY dist/ /dist/
-RUN uv venv "$VIRTUAL_ENV" \
- && uv pip install --no-cache --find-links /dist odg-core-libs==${ODG_CORE_LIBS_VERSION} \
- && rm -rf /dist
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY packages/ ./packages/
+COPY src/ ./src/
+ARG VERSION
+RUN uv version "${VERSION}" \
+ && uv sync --frozen --no-cache --no-dev

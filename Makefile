@@ -7,6 +7,7 @@ DB_PORT ?= 5432
 DB_USER ?= postgres
 DB_NAME ?= postgres
 SERVER_PORT ?= 5000
+VERSION ?= $(shell uv version 2>/dev/null | awk '{print $$2}')
 
 # Default target
 help:
@@ -86,44 +87,37 @@ build-clients:
 # Build core package
 build-core:
 	@echo "Building core package..."
-	@mkdir -p dist
-	@uv run python3 setup.py bdist_wheel --dist-dir dist
-	@rm -rf build
+	@uv build --out-dir dist
 	@echo "Core package built:"
 	@ls -1 dist/
 
 # Build Docker image
 .check-build-prereqs:
-	@if [ -z "$(ODG_CORE_LIBS_VERSION)" ]; then \
-		echo "Error: ODG_CORE_LIBS_VERSION environment variable is required"; \
-		echo "Usage: ODG_CORE_LIBS_VERSION=<version> make build-docker"; \
-		exit 1; \
-	fi
-	@if [ ! -d "dist" ]; then \
-		echo "Error: dist directory not found. Run 'make build-core' first."; \
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: could not determine version (uv version failed)"; \
 		exit 1; \
 	fi
 
 build-docker: .check-build-prereqs
 	@echo "Building Docker image..."
 	@docker-buildx build \
-		--build-arg ODG_CORE_LIBS_VERSION=$(ODG_CORE_LIBS_VERSION) \
+		--build-arg VERSION=$(VERSION) \
 		--platform linux/amd64,linux/arm64 \
-		-t odg-core:$(ODG_CORE_LIBS_VERSION) \
+		-t odg-core:$(VERSION) \
 		-f Dockerfile \
 		.
-	@echo "Docker image built: odg-core:$(ODG_CORE_LIBS_VERSION)"
+	@echo "Docker image built: odg-core:$(VERSION)"
 
 # Build Docker image for current architecture only (local development)
 build-docker-local: .check-build-prereqs
 	@echo "Building Docker image (local arch)..."
 	@docker-buildx build \
-		--build-arg ODG_CORE_LIBS_VERSION=$(ODG_CORE_LIBS_VERSION) \
+		--build-arg VERSION=$(VERSION) \
 		--load \
-		-t odg-core:$(ODG_CORE_LIBS_VERSION) \
+		-t odg-core:$(VERSION) \
 		-f Dockerfile \
 		.
-	@echo "Docker image built: odg-core:$(ODG_CORE_LIBS_VERSION)"
+	@echo "Docker image built: odg-core:$(VERSION)"
 
 # Run PostgreSQL database instance
 run-db:

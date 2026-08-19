@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools", "semver"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "odg-core-libs"
 description = "Mandatory system internals for the Open Delivery Gear"
 requires-python = ">=3.12"
-dynamic = ["version"]
+version = "0.1368.0.dev0"
 dependencies = [
     "bdba-client",
     "odg-client",
@@ -36,6 +36,23 @@ dependencies = [
     "watchdog",
     "python-dateutil",
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["bdba", "delivery", "odg_client"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.package-data]
+"features" = ["*.yaml"]
+"freshclam" = ["freshclam.conf"]
+"odg" = ["*.yaml"]
+"osinfo" = ["*.yaml"]
+"responsibles" = ["*.yaml"]
+"schema" = ["*.yaml"]
+"secret_mgmt" = ["*.yaml"]
+"swagger" = ["*.yaml"]
 
 [tool.uv.workspace]
 members = ["packages/bdba-client", "packages/odg-client"]

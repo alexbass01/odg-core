@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import os
+import re
+import subprocess
 import sys
 
 import yaml
@@ -9,15 +11,22 @@ import yaml
 own_dir = os.path.dirname(__file__)
 repo_dir = os.path.abspath(os.path.join(own_dir, os.path.pardir))
 EXTENSION_DEFINITIONS_FILE = os.path.join(repo_dir, 'extension-definitions.yaml')
-VERSION_FILE = os.path.join(repo_dir, 'VERSION')
 LOCAL_ARTEFACTS = ('delivery-service', 'extensions')
+
+
+def to_pep440(version: str) -> str:
+    # semver pre-release suffix (e.g. 0.1368.0-dev) → PEP-440 dev release (0.1368.0.dev0)
+    return re.sub(r'-([a-zA-Z].*)$', r'.\1 0', version).replace(' ', '')
 
 
 def main():
     next_version = sys.stdin.read().strip()
 
-    with open(VERSION_FILE, 'w') as f:
-        f.write(f'{next_version}\n')
+    subprocess.run(
+        ['uv', 'version', to_pep440(next_version)],
+        cwd=repo_dir,
+        check=True,
+    )
 
     with open(EXTENSION_DEFINITIONS_FILE) as f:
         extension_definitions = list(yaml.safe_load_all(f.read()))
