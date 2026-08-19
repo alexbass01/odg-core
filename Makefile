@@ -74,13 +74,8 @@ test:
 # Build client packages (bdba and odg)
 build-clients:
 	@echo "Building client packages..."
-	@mkdir -p dist
-	@echo "Building bdba-client package..."
-	@uv run --directory src python3 ../setup.bdba-client.py bdist_wheel --dist-dir ../dist
-	@rm -rf src/build
-	@echo "Building odg-client package..."
-	@uv run --directory src python3 ../setup.odg-client.py bdist_wheel --dist-dir ../dist
-	@rm -rf src/build
+	@uv build --package bdba-client --out-dir dist
+	@uv build --package odg-client --out-dir dist
 	@echo "Client packages built:"
 	@ls -1 dist/
 

@@ -39,7 +39,6 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["bdba", "delivery", "odg_client"]
 
 [tool.setuptools.package-dir]
 "" = "src"

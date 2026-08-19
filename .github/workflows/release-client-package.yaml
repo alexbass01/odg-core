@@ -23,59 +23,51 @@ jobs:
           init-git-identity: true
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
-      - name: Create Distribution Package
+      - name: Bump to release version and build
+        id: version
         shell: bash
         run: |
           set -euo pipefail
 
-          pkg_dir=dist
-          mkdir -p ${pkg_dir}
-          pkg_dir="$(readlink -f ${pkg_dir})"
+          pkg="packages/${{ inputs.client }}-client"
 
-          path="setup.${{ inputs.client }}-client.py"
+          # strip .dev0 suffix to get the release version
+          current="$(uv version --project ${pkg} | awk '{print $2}')"
+          release="${current%.dev0}"
 
-          echo "Building distribution package from ${path} to ${pkg_dir}"
-          uv run python3 ${path} \
-            bdist_wheel \
-            --dist-dir ${pkg_dir}
+          echo "releasing ${current} => ${release}"
+          echo "release-version=${release}" >> "${GITHUB_OUTPUT}"
+
+          uv version --project "${pkg}" "${release}"
+          uv build --package "${{ inputs.client }}-client" --out-dir dist
 
           echo "Built package:"
-          ls "${pkg_dir}"
+          ls dist/
       - name: Upload Distribution Package
         uses: actions/upload-artifact@v7.0.1
         with:
           name: distribution-package
           path: dist/
-      - name: Retrieve Version
-        id: version
-        shell: uv run --no-project --with semver python {0}
-        run: |
-          import os
-          import semver
-
-          version_file = '${{ inputs.client }}_CLIENT_VERSION'.upper()
-
-          with open(version_file) as f:
-            from_version = f.read().strip()
-
-          to_version = semver.Version.parse(from_version).bump_minor()
-
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            f.write(f'from-version={from_version}\n')
-            f.write(f'to-version={to_version}\n')
-            f.write(f'version-file={version_file}\n')
-      - name: Update Version
+      - name: Bump to next dev version and commit
         shell: bash
         run: |
-          from_version=${{ steps.version.outputs.from-version }}
-          to_version=${{ steps.version.outputs.to-version }}
-          version_file=${{ steps.version.outputs.version-file }}
+          set -euo pipefail
 
-          echo "$to_version" > "$version_file"
-          uv version --project "packages/${{ inputs.client }}-client" "$to_version"
+          pkg="packages/${{ inputs.client }}-client"
+          release="${{ steps.version.outputs.release-version }}"
 
-          git add "$version_file" "packages/${{ inputs.client }}-client/pyproject.toml" uv.lock
-          git commit -m "Upgrade ${{ inputs.client }} client" -m "from ${from_version} to ${to_version}"
+          # bump minor and add .dev0
+          next="$(uv run --no-project --with semver python3 -c "
+          import semver
+          v = semver.Version.parse('${release}')
+          print(f'{v.bump_minor()}.dev0')
+          ")"
+
+          echo "next dev version: ${next}"
+          uv version --project "${pkg}" "${next}"
+
+          git add "${pkg}/pyproject.toml" uv.lock
+          git commit -m "Upgrade ${{ inputs.client }} client" -m "from ${release} to ${next}"
           git push
 
   pypi:
