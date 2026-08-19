@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 
 import yaml
@@ -18,6 +19,18 @@ def main():
 
     with open(VERSION_FILE, 'w') as f:
         f.write(f'{next_version}\n')
+
+    # convert semver to PEP 440: strip pre-release hash suffix, add .dev0
+    pep440_version = next_version
+    if '-' in next_version:
+        pep440_version = f'{next_version.split("-")[0]}.dev0'
+
+    pyproject_file = os.path.join(repo_dir, 'pyproject.toml')
+    with open(pyproject_file) as f:
+        pyproject = f.read()
+    pyproject = re.sub(r'^version = ".*"', f'version = "{pep440_version}"', pyproject, flags=re.MULTILINE)
+    with open(pyproject_file, 'w') as f:
+        f.write(pyproject)
 
     with open(EXTENSION_DEFINITIONS_FILE) as f:
         extension_definitions = list(yaml.safe_load_all(f.read()))

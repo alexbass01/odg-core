@@ -19,34 +19,34 @@ jobs:
     with:
       mode: release
 
-  release-to-github-and-bump:
-    uses: gardener/cc-utils/.github/workflows/release.yaml@v1
-    needs:
-      - build
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-    with:
-      release-commit-target: branch
-      next-version: ${{ inputs.next-version }}
+  # release-to-github-and-bump:
+  #   uses: gardener/cc-utils/.github/workflows/release.yaml@v1
+  #   needs:
+  #     - build
+  #   permissions:
+  #     contents: write
+  #     packages: write
+  #     id-token: write
+  #   with:
+  #     release-commit-target: branch
+  #     next-version: ${{ inputs.next-version }}
 
-  pypi:
-    runs-on: ubuntu-latest
-    name: Publish to PYPI
-    needs:
-      - build
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Retrieve Distribution Packages
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: distribution-packages
-      - name: Prepare Filesystem
-        run: |
-          tar xf distribution-packages.tar.gz
-          rm -rf dist/blobs.d dist/ocm_resources.yaml
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1 # assumes package to be located in `dist/`
+  # pypi:
+  #   runs-on: ubuntu-latest
+  #   name: Publish to PYPI
+  #   needs:
+  #     - build
+  #   permissions:
+  #     contents: read
+  #     id-token: write
+  #   steps:
+  #     - name: Retrieve Distribution Packages
+  #       uses: actions/download-artifact@v8.0.1
+  #       with:
+  #         name: distribution-packages
+  #     - name: Prepare Filesystem
+  #       run: |
+  #         tar xf distribution-packages.tar.gz
+  #         rm -rf dist/blobs.d dist/ocm_resources.yaml
+  #     - name: Publish to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1

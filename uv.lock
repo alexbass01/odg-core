@@ -241,7 +241,7 @@ wheels = [
 
 [[package]]
 name = "bdba-client"
-version = "0.15.0"
+version = "0.16.0.dev0"
 source = { editable = "packages/bdba-client" }
 dependencies = [
     { name = "cachecontrol" },
@@ -1568,7 +1568,7 @@ wheels = [
 
 [[package]]
 name = "odg-client"
-version = "0.12.0"
+version = "0.13.0.dev0"
 source = { editable = "packages/odg-client" }
 dependencies = [
     { name = "dacite" },
@@ -1589,6 +1589,7 @@ requires-dist = [
 
 [[package]]
 name = "odg-core-libs"
+version = "0.1368.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

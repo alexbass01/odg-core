@@ -3,12 +3,12 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["../../src"]
+where = ["src"]
 include = ["bdba*"]
 
 [project]
 name = "bdba-client"
-version = "0.15.0"
+version = "0.16.0.dev0"
 requires-python = ">=3.12"
 dependencies = [
     "cachecontrol",
