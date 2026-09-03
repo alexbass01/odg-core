@@ -76,8 +76,10 @@
       // depName "<repo>/<pkg>" where <repo> (e.g. alpine_3_24) must match the
       // Alpine version of the base image — flip it when the FROM tag moves
       // (e.g. alpine3.24 -> alpine3.25).
+      // Regex must be slash-delimited ("/.../") — without the slashes a
+      // managerFilePatterns entry is treated as a glob and matches nothing.
       customType: 'regex',
-      managerFilePatterns: ['(^|/)Dockerfile$'],
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
       matchStrings: [
         '\\s*# renovate: datasource=repology depName=(?<depName>alpine_\\d+_\\d+/[a-z0-9+.-]+) versioning=apk\\s+[a-z0-9+.-]+=(?<currentValue>[0-9][^\\s\\\\]*)',
       ],
