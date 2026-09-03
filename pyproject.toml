@@ -55,7 +55,7 @@ dev = [
     "numpy==2.5.2",
     "pytest==9.0.3",
     "pytest-asyncio==1.4.0",
-    "scipy==1.18.0",
+    "scipy==1.18.1",
     "ruff==0.16.2",
     "bandit==1.9.4",
     "semver==3.0.4",
