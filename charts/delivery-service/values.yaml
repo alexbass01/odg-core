@@ -10,6 +10,17 @@ deployment:
       memory: 1Gi
       cpu: 100m
     limits:
-      memory: 5Gi
-      cpu: 500m
+      memory: 6Gi
+gateway:
+  annotations: {}
+  className: envoy-gateway
+  enabled: false
+  enableTls: true
+  fullnameOverride: open-delivery-gear
 host: delivery-service
+limitRange:
+  defaultRequest:
+    memory: 250Mi
+    cpu: 100m
+  default:
+    memory: 500Mi

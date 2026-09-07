@@ -25,9 +25,13 @@ RUN apk add --no-cache \
     clamav=1.4.6-r0 \
     # renovate: datasource=repology depName=alpine_3_24/clamav-libunrar versioning=apk
     clamav-libunrar=1.4.6-r0 \
+<<<<<<< HEAD
     # renovate: datasource=repology depName=alpine_3_24/curl versioning=apk
     curl=8.22.0-r0 \
     # renovate: datasource=repology depName=alpine_3_24/git versioning=apk
+=======
+    curl=8.22.0-r0 \
+>>>>>>> master
     git=2.54.0-r0 \
     # renovate: datasource=repology depName=alpine_3_24/helm versioning=apk
     helm=3.19.0-r7 \
