@@ -47,13 +47,12 @@ permissions:
 
 jobs:
   renovate:
-    uses: alexbass01/open-component-model-github/.github/workflows/renovate.yml@v1
+    uses: open-component-model/.github/.github/workflows/renovate.yml@v1
     secrets: inherit
     with:
       repository: ${{ github.repository }}
-      # TODO(prod): after rollout, drop centralConfig (default points to
-      # open-component-model/.github@v1).
-      centralConfig: alexbass01/open-component-model-github@v1
+      # Override for forks:
+      # centralConfig: alexbass01/open-component-model-github@v1
       repoCache: ${{ inputs.repoCache || 'enabled' }}
       ignoreSchedule: ${{ github.event_name == 'workflow_dispatch' && inputs.ignoreSchedule }}
       logLevel: ${{ inputs.logLevel || 'info' }}
