@@ -38,6 +38,8 @@ dependencies = [
     "uvicorn==0.52.1",
     "watchdog==6.0.0",
     "python-dateutil==2.9.0.post0",
+    "scipy==1.18.0",
+    "numpy==2.5.2",
 ]
 
 [tool.uv.workspace]
@@ -52,10 +54,8 @@ dev = [
     "aiohttp-devtools==1.1.2",
     "aiosqlite==0.22.1",
     "greenlet==3.5.5",
-    "numpy==2.5.2",
     "pytest==9.0.3",
     "pytest-asyncio==1.4.0",
-    "scipy==1.18.0",
     "ruff==0.16.2",
     "bandit==1.9.4",
     "semver==3.0.4",
