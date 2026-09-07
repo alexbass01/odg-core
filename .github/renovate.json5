@@ -53,31 +53,6 @@
       matchDepNames: ['bdba-client', 'odg-client'],
       enabled: false,
     },
-    {
-      // Bundle Alpine package pin bumps (from the repology customManager
-      // below) into a single PR instead of one PR per package.
-      matchDatasources: ['repology'],
-      matchDepNames: ['/alpine_\\d+_\\d+\\//'],
-      groupName: 'alpine packages',
-    },
-  ],
-  customManagers: [
-    {
-      // Alpine package pins in the Dockerfile (`apk add pkg=version-rev`).
-      // The comment line above each pin carries the repology coordinates:
-      // depName "<repo>/<pkg>" where <repo> (e.g. alpine_3_24) must match the
-      // Alpine version of the base image — flip it when the FROM tag moves
-      // (e.g. alpine3.24 -> alpine3.25).
-      // Regex must be slash-delimited ("/.../") — without the slashes a
-      // managerFilePatterns entry is treated as a glob and matches nothing.
-      customType: 'regex',
-      managerFilePatterns: ['/(^|/)Dockerfile$/'],
-      matchStrings: [
-        '\\s*# renovate: datasource=repology depName=(?<depName>alpine_\\d+_\\d+/[a-z0-9+.-]+) versioning=apk\\s+[a-z0-9+.-]+=(?<currentValue>[0-9][^\\s\\\\]*)',
-      ],
-      datasourceTemplate: 'repology',
-      versioningTemplate: 'apk',
-    },
   ],
   // NOTE: .ocm/base-component.yaml is deliberately NOT managed here (no
   // customManager, no postUpgradeTasks sync) — its postgresql chart/image
