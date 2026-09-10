@@ -23,7 +23,7 @@
   packageRules: [
     {
       matchDepNames: ['gardener-cicd-libs', 'gardener-ocm', 'gardener-oci'],
-      groupName: 'ocm deps',
+      groupName: 'gardner python deps',
     },
     {
       // Majors wait as checkboxes in the dependency dashboard ("Pending
