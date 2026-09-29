@@ -1,4 +1,4 @@
-FROM golang:1.27.1-alpine3.24 AS cbomkit-theia-builder
+FROM golang:1.27.1-alpine3.24@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS cbomkit-theia-builder
 # renovate: datasource=github-releases depName=cbomkit/cbomkit-theia versioningTemplate=semver-coerced extractVersionTemplate=^v?(?<version>.*)$
 ARG CBOMKIT_THEIA_VERSION=1.1.2
 # Cache mounts: local BuildKit only — harmless no-op where unsupported (e.g. kaniko in CI)
@@ -8,10 +8,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
  && git clone --depth 1 --branch release/${CBOMKIT_THEIA_VERSION} https://github.com/cbomkit/cbomkit-theia.git /cbomkit-theia \
  && cd /cbomkit-theia && go mod download -x && go build -v
 
-FROM python:3.14-alpine3.24
+FROM python:3.14-alpine3.24@sha256:9e9fde4d32eedce0b661d9ab91e826b62dddf28e928c230ec55f1866cac66b01
 
 # uv from its official image — no pip, no --break-system-packages
-COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.5@sha256:e85be844203885286c60ffad8a858d48afb6c5a5c237ca0e67f12e74b8f174b1 /uv /uvx /usr/local/bin/
 
 COPY src/malware/clamav_entrypoint.sh /
 COPY src/malware/clamd.conf /etc/clamav/clamd.conf
