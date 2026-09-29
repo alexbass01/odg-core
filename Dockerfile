@@ -1,9 +1,12 @@
-FROM golang:1.26.6-alpine3.24 AS cbomkit-theia-builder
-# renovate: datasource=github-releases depName=cbomkit/cbomkit-theia
-ARG CBOMKIT_THEIA_VERSION=1.0.1
-RUN apk add --no-cache git \
- && git clone --branch ${CBOMKIT_THEIA_VERSION} https://github.com/cbomkit/cbomkit-theia.git /cbomkit-theia \
- && cd /cbomkit-theia && go mod download && go build
+FROM golang:1.27.1-alpine3.24 AS cbomkit-theia-builder
+# renovate: datasource=github-releases depName=cbomkit/cbomkit-theia versioningTemplate=semver-coerced extractVersionTemplate=^v?(?<version>.*)$
+ARG CBOMKIT_THEIA_VERSION=1.1.2
+# Cache mounts: local BuildKit only — harmless no-op where unsupported (e.g. kaniko in CI)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    apk add --no-cache git \
+ && git clone --depth 1 --branch release/${CBOMKIT_THEIA_VERSION} https://github.com/cbomkit/cbomkit-theia.git /cbomkit-theia \
+ && cd /cbomkit-theia && go mod download -x && go build -v
 
 FROM python:3.14-alpine3.24
 
