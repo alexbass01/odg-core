@@ -11,20 +11,25 @@
 {{- end -}}
 
 {{/*
-Renders ServiceAccount + Role + RoleBinding per workload. Skipped when the workload
-authenticates via an external kubeconfig instead of its ServiceAccount token
-(`.Values.k8sCfgName` set -> env var K8S_CFG_NAME -> kubeconfig from a `kubernetes` secret).
+Renders ServiceAccount + Role + RoleBinding per workload. The ServiceAccount is always
+rendered (pods reference it by name at admission time), but Role and RoleBinding are skipped
+when the workload authenticates via an external kubeconfig instead of its ServiceAccount
+token (`.Values.k8sCfgName` set -> env var K8S_CFG_NAME -> kubeconfig from a `kubernetes`
+secret); in that mode the ServiceAccount mounts no token.
 The ServiceAccount name matches the (sub-)chart name; set it as `serviceAccountName` on the
 workload's pod spec.
 */}}
 
 {{- define "odg.rbac.scan" -}}
-{{- if empty .Values.k8sCfgName }}
 apiVersion: v1
-kind: ServiceAccount
+kind: ServiceAccount # always required: pods reference it by name at admission time
 metadata:
   name: {{ .Chart.Name }}
   namespace: {{ .Values.target_namespace | default .Release.Namespace }}
+{{- if .Values.k8sCfgName }}
+automountServiceAccountToken: false # external kubeconfig in use, no token needed
+{{- end }}
+{{- if empty .Values.k8sCfgName }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -64,12 +69,15 @@ roleRef:
 {{- end -}}
 
 {{- define "odg.rbac.logs" -}}
-{{- if empty .Values.k8sCfgName }}
 apiVersion: v1
-kind: ServiceAccount
+kind: ServiceAccount # always required: pods reference it by name at admission time
 metadata:
   name: {{ .Chart.Name }}
   namespace: {{ .Values.target_namespace | default .Release.Namespace }}
+{{- if .Values.k8sCfgName }}
+automountServiceAccountToken: false # external kubeconfig in use, no token needed
+{{- end }}
+{{- if empty .Values.k8sCfgName }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -102,12 +110,15 @@ roleRef:
 {{- end -}}
 
 {{- define "odg.rbac.enumerator" -}}
-{{- if empty .Values.k8sCfgName }}
 apiVersion: v1
-kind: ServiceAccount
+kind: ServiceAccount # always required: pods reference it by name at admission time
 metadata:
   name: {{ .Chart.Name }}
   namespace: {{ .Values.target_namespace | default .Release.Namespace }}
+{{- if .Values.k8sCfgName }}
+automountServiceAccountToken: false # external kubeconfig in use, no token needed
+{{- end }}
+{{- if empty .Values.k8sCfgName }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -154,12 +165,15 @@ roleRef:
 {{- end -}}
 
 {{- define "odg.rbac.controller" -}}
-{{- if empty .Values.k8sCfgName }}
 apiVersion: v1
-kind: ServiceAccount
+kind: ServiceAccount # always required: pods reference it by name at admission time
 metadata:
   name: {{ .Chart.Name }}
   namespace: {{ .Values.target_namespace | default .Release.Namespace }}
+{{- if .Values.k8sCfgName }}
+automountServiceAccountToken: false # external kubeconfig in use, no token needed
+{{- end }}
+{{- if empty .Values.k8sCfgName }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
