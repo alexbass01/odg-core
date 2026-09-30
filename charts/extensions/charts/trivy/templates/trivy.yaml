@@ -25,6 +25,7 @@ spec:
         app: {{ $podName }}
         delivery-gear.gardener.cloud/service: trivy
     spec:
+      serviceAccountName: {{ .Chart.Name }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

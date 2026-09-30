@@ -23,6 +23,7 @@ spec:
         app: {{ $podName }}
         delivery-gear.gardener.cloud/service: issueReplicator
     spec:
+      serviceAccountName: {{ .Chart.Name }}
       terminationGracePeriodSeconds: 300 # 5 min
       containers:
         - name: {{ $podName }}
