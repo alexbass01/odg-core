@@ -29,8 +29,7 @@ RUN apk add --no-cache \
  && curl https://aia.pki.co.sap.com/aia/SAPNetCA_G2_2.crt -o \
     /usr/local/share/ca-certificates/SAPNetCA_G2_2.crt \
  && update-ca-certificates \
- && mkdir /freshclam \
- && chown clamav /freshclam
+ && mkdir /freshclam
 
 COPY --from=aquasec/trivy:latest@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 /usr/local/bin/trivy /usr/local/bin/trivy
 
@@ -49,3 +48,25 @@ RUN --mount=type=bind,source=dist/,target=/dist \
         --constraint constraints.txt \
         odg-core-libs==${ODG_CORE_LIBS_VERSION} \
  && ln -sf /etc/ssl/certs/ca-certificates.crt "$(python -m certifi)"
+
+# unprivileged runtime user; HOME doubles as writable location (default CACHE_DIR lives
+# inside the root-owned venv, so point it at the user's home instead)
+RUN addgroup -g 10000 odg \
+ && adduser -D -u 10000 -G odg odg \
+ && mkdir -p /home/odg/.cache /www /run/clamav /var/log/clamav \
+ && chown -R 10000:10000 \
+        /home/odg \
+        /www \
+        /run/clamav \
+        /var/log/clamav \
+        /var/lib/clamav \
+        /freshclam
+
+ENV HOME=/home/odg
+ENV CACHE_DIR=/home/odg/.cache
+
+# log files (k8s/logging.py: `logs-<level>.log`) are written relative to the cwd —
+# point it at the writable home instead of `/`
+WORKDIR /home/odg
+
+USER 10000:10000

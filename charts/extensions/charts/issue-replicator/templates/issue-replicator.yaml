@@ -24,6 +24,8 @@ spec:
         delivery-gear.gardener.cloud/service: issueReplicator
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       terminationGracePeriodSeconds: 300 # 5 min
       containers:
         - name: {{ $podName }}
@@ -34,7 +36,7 @@ spec:
             - -m
             - issue_replicator
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets

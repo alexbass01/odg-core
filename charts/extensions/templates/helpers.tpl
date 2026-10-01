@@ -225,3 +225,28 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
 {{- end -}}
+
+{{/*
+Pod securityContext shared by all ODG workloads. Requires the image to define uid/gid
+10000 (the `odg` user, see Dockerfile); fsGroup also grants group access to mounted
+secret/configMap/PVC volumes.
+*/}}
+{{- define "odg.securitycontext.pod" -}}
+runAsNonRoot: true
+runAsUser: 10000
+runAsGroup: 10000
+fsGroup: 10000
+seccompProfile:
+  type: RuntimeDefault
+{{- end -}}
+
+{{/*
+Container securityContext shared by all ODG workloads: Python workers need no Linux
+capabilities and never have to escalate privileges.
+*/}}
+{{- define "odg.securitycontext.container" -}}
+allowPrivilegeEscalation: false
+capabilities:
+  drop:
+    - ALL
+{{- end -}}

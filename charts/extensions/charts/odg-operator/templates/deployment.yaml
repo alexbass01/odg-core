@@ -29,6 +29,8 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: odg-operator
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       containers:
         - name: {{ $podName }}
           image: {{ include "image" .Values.global.image }}
@@ -43,7 +45,7 @@ spec:
             - /extension-definitions/extension_definitions.yaml
           {{- end}}
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
           args:
           {{- range $arg := default list .Values.args }}
             - {{ $arg }}

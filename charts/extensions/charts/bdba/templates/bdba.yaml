@@ -24,6 +24,8 @@ spec:
         delivery-gear.gardener.cloud/service: bdba
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -41,7 +43,7 @@ spec:
             - -m
             - bdba_extension
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets

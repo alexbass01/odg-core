@@ -24,6 +24,8 @@ spec:
         delivery-gear.gardener.cloud/service: clamav
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -40,7 +42,7 @@ spec:
             - /bin/sh
             - /clamav_entrypoint.sh
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets

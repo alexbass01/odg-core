@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 
 own_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.join(own_dir, os.pardir)
-default_cache_dir = os.path.join(root_dir, '.cache')
+# on images, CACHE_DIR points at a user-writable path (the default below lands inside the
+# installed venv, which is not writable for non-root containers)
+default_cache_dir = os.environ.get('CACHE_DIR', os.path.join(root_dir, '.cache'))
 
 ready_to_terminate = True
 wants_to_terminate = False

@@ -16,6 +16,8 @@ spec:
         app: {{ $podName }}
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       containers:
         - name: {{ $podName }}
           image: {{ include "image" .Values.global.image }}
@@ -25,7 +27,7 @@ spec:
             - -m
             - backlog_controller
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets
