@@ -64,6 +64,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+            readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (emptyDir)
           readinessProbe:
             httpGet:
               path: /ready
@@ -101,6 +102,10 @@ spec:
           {{- end }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
             - name: delivery-db
               mountPath: /secrets/delivery-db
             - name: github
@@ -140,6 +145,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: tmp # multipart SBOM uploads spool to disk (starlette)
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 512Mi
         - name: delivery-db
           secret:
             secretName: secret-factory-delivery-db

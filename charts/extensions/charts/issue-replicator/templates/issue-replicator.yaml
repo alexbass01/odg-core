@@ -37,6 +37,7 @@ spec:
             - issue_replicator
           securityContext:
             {{- include "odg.securitycontext.container" . | nindent 12 }}
+            readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (unbounded emptyDir)
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets
@@ -49,6 +50,10 @@ spec:
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
             - name: github
               mountPath: /secrets/github
             - name: github-app
@@ -75,6 +80,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        # no sizeLimit: scan artefacts (images, sources, codeql dbs) can be several GiB
+        # large; node disk-pressure eviction is the backstop
+        - name: tmp
+          emptyDir: {}
+        - name: home # logs-*.log (cwd), CACHE_DIR, HOME
+          emptyDir: {}
         - name: github
           secret:
             secretName: secret-factory-github

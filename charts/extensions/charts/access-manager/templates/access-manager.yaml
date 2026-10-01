@@ -32,12 +32,17 @@ spec:
                 - access_manager_extension
               securityContext:
                 {{- include "odg.securitycontext.container" . | nindent 16 }}
+                readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (emptyDir)
               env:
                 - name: SECRET_FACTORY_PATH
                   value: /secrets
                 - name: K8S_TARGET_NAMESPACE
                   value: {{ .Values.target_namespace | default .Release.Namespace }}
               volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: home
+                  mountPath: /home/odg
                 - name: delivery-db
                   mountPath: /secrets/delivery-db
                 - name: github
@@ -55,6 +60,12 @@ spec:
                 {{- toYaml . | nindent 16 }}
               {{- end }}
           volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 100Mi
+            - name: home # logs-*.log (cwd), CACHE_DIR, HOME
+              emptyDir:
+                sizeLimit: 512Mi
             - name: delivery-db
               secret:
                 secretName: secret-factory-delivery-db

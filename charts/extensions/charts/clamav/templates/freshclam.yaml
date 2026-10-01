@@ -32,6 +32,7 @@ spec:
             - freshclam
           securityContext:
             {{- include "odg.securitycontext.container" . | nindent 12 }}
+            readOnlyRootFilesystem: true # writable paths -> emptyDir mounts below
           startupProbe:
             httpGet:
               path: /readiness
@@ -47,10 +48,32 @@ spec:
           ports:
             - containerPort: 8080
               name: default
+          volumeMounts:
+            - name: www
+              mountPath: /www
+            - name: freshclam
+              mountPath: /freshclam
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
           {{- with (.Values.freshclam).resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      volumes:
+        - name: www # served over http; virus definitions (~150Mi + deltas)
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: freshclam # status + log file
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 100Mi
+        - name: home # logs-*.log, HOME
+          emptyDir:
+            sizeLimit: 256Mi
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
