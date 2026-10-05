@@ -20,6 +20,8 @@ spec:
             app: {{ $podName }}
         spec:
           serviceAccountName: {{ .Chart.Name }}
+          securityContext:
+            {{- include "odg.securitycontext.pod" . | nindent 12 }}
           containers:
           - name: {{ $podName }}
             image: {{ include "image" .Values.global.image }}
@@ -29,7 +31,8 @@ spec:
             - -m
             - ghas
             securityContext:
-              allowPrivilegeEscalation: false
+              {{- include "odg.securitycontext.container" . | nindent 14 }}
+              readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (emptyDir)
             env:
             - name: SECRET_FACTORY_PATH
               value: /secrets
@@ -46,6 +49,10 @@ spec:
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
             volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
             - name: github
               mountPath: /secrets/github
             - name: github-app
@@ -66,6 +73,12 @@ spec:
               {{- toYaml . | nindent 14 }}
             {{- end }}
           volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 100Mi
+            - name: home # logs-*.log (cwd), CACHE_DIR, HOME
+              emptyDir:
+                sizeLimit: 512Mi
             - name: github
               secret:
                 secretName: secret-factory-github

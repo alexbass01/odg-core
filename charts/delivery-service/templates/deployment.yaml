@@ -36,6 +36,13 @@ spec:
       serviceAccountName: {{ $podName }}
       # external kubeconfig (K8S_CFG_NAME) -> the service account token is not used at all
       automountServiceAccountToken: {{ if (default dict .Values.envVars).K8S_CFG_NAME }}false{{ else }}true{{ end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -54,6 +61,10 @@ spec:
             - --productive
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (emptyDir)
           readinessProbe:
             httpGet:
               path: /ready
@@ -91,6 +102,10 @@ spec:
           {{- end }}
           {{- end }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
             - name: delivery-db
               mountPath: /secrets/delivery-db
             - name: github
@@ -130,6 +145,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: tmp # multipart SBOM uploads spool to disk (starlette)
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 512Mi
         - name: delivery-db
           secret:
             secretName: secret-factory-delivery-db

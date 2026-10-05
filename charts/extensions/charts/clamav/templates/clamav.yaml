@@ -24,6 +24,8 @@ spec:
         delivery-gear.gardener.cloud/service: clamav
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        {{- include "odg.securitycontext.pod" . | nindent 8 }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -40,7 +42,8 @@ spec:
             - /bin/sh
             - /clamav_entrypoint.sh
           securityContext:
-            allowPrivilegeEscalation: false
+            {{- include "odg.securitycontext.container" . | nindent 12 }}
+            readOnlyRootFilesystem: true # writable paths -> emptyDir mounts below
           env:
             - name: SECRET_FACTORY_PATH
               value: /secrets
@@ -57,6 +60,18 @@ spec:
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
           volumeMounts:
+            - name: tmp # clamd extracts archives here (StreamMaxLength 4096M)
+              mountPath: /tmp
+            - name: clamav-db
+              mountPath: /var/lib/clamav
+            - name: clamav-run
+              mountPath: /run/clamav
+            - name: clamav-log
+              mountPath: /var/log/clamav
+            - name: freshclam
+              mountPath: /freshclam
+            - name: home
+              mountPath: /home/odg
             - name: aws
               mountPath: /secrets/aws
             - name: github
@@ -88,6 +103,23 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: tmp # no sizeLimit: scanned images can be several GiB
+          emptyDir: {}
+        - name: clamav-db # virus definitions pulled from the freshclam mirror (~150Mi + deltas)
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: clamav-run # clamd socket + pid file
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: clamav-log
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: freshclam # freshclam update log
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: home # logs-*.log (cwd), CACHE_DIR, HOME
+          emptyDir:
+            sizeLimit: 512Mi
         - name: aws
           secret:
             secretName: secret-factory-aws

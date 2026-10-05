@@ -20,6 +20,8 @@ spec:
             app: {{ $podName }}
         spec:
           serviceAccountName: {{ .Chart.Name }}
+          securityContext:
+            {{- include "odg.securitycontext.pod" . | nindent 12 }}
           containers:
           - name: {{ $podName }}
             image: {{ include "image" .Values.global.image }}
@@ -29,7 +31,8 @@ spec:
             - -m
             - delivery_db_backup
             securityContext:
-              allowPrivilegeEscalation: false
+              {{- include "odg.securitycontext.container" . | nindent 14 }}
+              readOnlyRootFilesystem: true # writable paths: /tmp + /home/odg (emptyDir)
             env:
             - name: SECRET_FACTORY_PATH
               value: /secrets
@@ -42,6 +45,10 @@ spec:
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
             volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: home
+              mountPath: /home/odg
             - name: delivery-db
               mountPath: /secrets/delivery-db
             - name: github
@@ -59,6 +66,12 @@ spec:
               {{- toYaml . | nindent 14 }}
             {{- end }}
           volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 100Mi
+            # no sizeLimit: the full delivery-db dump is written to ./delivery-db-backup.tar (cwd)
+            - name: home # logs-*.log, CACHE_DIR, HOME, dump file
+              emptyDir: {}
             - name: delivery-db
               secret:
                 secretName: secret-factory-delivery-db
