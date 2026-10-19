@@ -1,5 +1,8 @@
 {{- $podName := "delivery-db-backup" }}
 
+{{- include "odg.rbac" . }}
+---
+
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -23,6 +26,7 @@ spec:
           imagePullSecrets:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          serviceAccountName: {{ .Chart.Name }}
           containers:
           - name: {{ $podName }}
             image: {{ include "image" .Values.global.image }}
@@ -40,6 +44,7 @@ spec:
               value: /extensions_cfg/extensions_cfg
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
+            {{- include "odg.envVars" . | nindent 12 }}
             volumeMounts:
             - name: delivery-db
               mountPath: /secrets/delivery-db
