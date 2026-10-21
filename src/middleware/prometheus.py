@@ -1,15 +1,39 @@
+import asyncio
 import datetime
+import logging
 
 import aiohttp.typedefs
 import aiohttp.web
+import aiohttp.web_exceptions
 import prometheus_client
 
 import middleware.auth
 
 
-APP_REQUEST_LATENCY_SECONDS = 'request_latency_seconds'
-APP_REQUESTS_CONCURRENCY = 'requests_concurrency'
-APP_REQUESTS_TOTAL = 'requests_total'
+logger = logging.getLogger(__name__)
+
+# Metric names — these appear in Prometheus exposition; changing them is a breaking change.
+METRIC_REQUEST_CONCURRENCY_STARTED_SECONDS = 'request_concurrency_started_seconds'
+METRIC_REQUEST_LATENCY_SECONDS = 'request_latency_seconds'
+METRIC_REQUESTS_CONCURRENCY = 'requests_concurrency'
+METRIC_REQUESTS_TOTAL = 'requests_total'
+
+# aiohttp app storage keys
+APP_REQUEST_CONCURRENCY_STARTED_SECONDS: aiohttp.web.AppKey[prometheus_client.Gauge] = (
+    aiohttp.web.AppKey('request_concurrency_started_seconds', prometheus_client.Gauge)
+)
+APP_REQUEST_LATENCY_SECONDS: aiohttp.web.AppKey[prometheus_client.Histogram] = aiohttp.web.AppKey(
+    'request_latency_seconds', prometheus_client.Histogram,
+)
+APP_REQUESTS_CONCURRENCY: aiohttp.web.AppKey[prometheus_client.Gauge] = aiohttp.web.AppKey(
+    'requests_concurrency',
+    prometheus_client.Gauge,
+)
+APP_REQUESTS_TOTAL: aiohttp.web.AppKey[prometheus_client.Counter] = aiohttp.web.AppKey(
+    'requests_total',
+    prometheus_client.Counter,
+)
+SLOW_REQUEST_THRESHOLD_SECONDS = 30.0
 
 
 @middleware.auth.noauth
@@ -35,6 +59,7 @@ class Metrics(aiohttp.web.View):
 
 def add_prometheus_middleware(
     app: aiohttp.web.Application,
+    registry: prometheus_client.CollectorRegistry | None = None,
 ) -> aiohttp.typedefs.Middleware:
 
     @aiohttp.web.middleware
@@ -43,39 +68,96 @@ def add_prometheus_middleware(
         handler: aiohttp.typedefs.Handler,
     ) -> aiohttp.web.StreamResponse:
         start_time = datetime.datetime.now()
+        start_timestamp = start_time.timestamp()
         request.app[APP_REQUESTS_CONCURRENCY].labels(request.path, request.method).inc()
-
-        try:
-            response = await handler(request)
-        finally:
-            request.app[APP_REQUESTS_CONCURRENCY].labels(request.path, request.method).dec()
-
-        latency = datetime.datetime.now() - start_time
-        request.app[APP_REQUEST_LATENCY_SECONDS].labels(request.path, request.method).observe(
-            latency.total_seconds(),
-        )  # noqa: E501
-        request.app[APP_REQUESTS_TOTAL].labels(
+        request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
             request.path,
             request.method,
-            response.status,
-        ).inc()
+        ).set(start_timestamp)
+
+        status = None
+        response = None
+        try:
+            response = await handler(request)
+            # handler may return None if the client disconnected mid-flight
+            status = response.status if response is not None else 'disconnected'
+        except aiohttp.web_exceptions.HTTPException as e:
+            status = e.status
+            raise
+        except asyncio.CancelledError, GeneratorExit:
+            status = 'cancelled'
+            raise
+        except BaseException:
+            status = 'error'
+            raise
+        finally:
+            latency_seconds = (datetime.datetime.now() - start_time).total_seconds()
+
+            request.app[APP_REQUESTS_CONCURRENCY].labels(request.path, request.method).dec()
+            request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
+                request.path,
+                request.method,
+            ).set(0)
+
+            request.app[APP_REQUEST_LATENCY_SECONDS].labels(
+                request.path,
+                request.method,
+            ).observe(latency_seconds)
+
+            if status is not None:
+                request.app[APP_REQUESTS_TOTAL].labels(
+                    request.path,
+                    request.method,
+                    status,
+                ).inc()
+
+            if latency_seconds > SLOW_REQUEST_THRESHOLD_SECONDS:
+                logger.warning(
+                    f'slow request: {request.method} {request.path} took '
+                    f'{latency_seconds:.1f}s ({status=})',
+                )
 
         return response
 
+    registry_kwargs = {'registry': registry} if registry is not None else {}
+
     app[APP_REQUEST_LATENCY_SECONDS] = prometheus_client.Histogram(
-        name=APP_REQUEST_LATENCY_SECONDS,
+        name=METRIC_REQUEST_LATENCY_SECONDS,
         documentation='Request latency (seconds)',
         labelnames=['endpoint', 'method'],
+        buckets=(
+            0.005,
+            0.025,
+            0.1,
+            0.5,
+            2.5,
+            10.0,
+            30.0,
+            60.0,
+            120.0,
+            300.0,
+            900.0,
+            float('inf'),
+        ),
+        **registry_kwargs,
     )
     app[APP_REQUESTS_CONCURRENCY] = prometheus_client.Gauge(
-        name=APP_REQUESTS_CONCURRENCY,
+        name=METRIC_REQUESTS_CONCURRENCY,
         documentation='Requests currently in progress',
         labelnames=['endpoint', 'method'],
+        **registry_kwargs,
+    )
+    app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS] = prometheus_client.Gauge(
+        name=METRIC_REQUEST_CONCURRENCY_STARTED_SECONDS,
+        documentation='Unix timestamp when the currently in-progress request started (0=none)',
+        labelnames=['endpoint', 'method'],
+        **registry_kwargs,
     )
     app[APP_REQUESTS_TOTAL] = prometheus_client.Counter(
-        name=APP_REQUESTS_TOTAL,
+        name=METRIC_REQUESTS_TOTAL,
         documentation='Requests total',
         labelnames=['endpoint', 'method', 'status'],
+        **registry_kwargs,
     )
 
     app.middlewares.insert(0, middleware)
