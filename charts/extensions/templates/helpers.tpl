@@ -46,25 +46,14 @@ Per-extension rules are declared in `charts/extensions/values.yaml` under
 `replace_namespaced_*` (claim/unclaim backlog items, pushing log CRDs, scaling
 deployments); `patch` is only granted where `patch_namespaced_*` is actually called
 (artefact-enumerator priority bump).
-
-The ServiceAccount is always rendered: pods reference it by name at admission time, also in
-external-kubeconfig mode. Role + RoleBinding are skipped when the workload authenticates via
-an external kubeconfig (`.Values.envVars.K8S_CFG_NAME` set -> kubeconfig from a
-`kubernetes`-type secret); in that mode the ServiceAccount mounts no token. `envVars` is the
-same passthrough the delivery-service chart uses, so the same values override feeds both.
 */}}
 {{- define "odg.rbac" -}}
 {{- $ns := .Values.target_namespace | default .Release.Namespace -}}
-{{- $k8sCfgName := (default dict .Values.envVars).K8S_CFG_NAME -}}
 apiVersion: v1
-kind: ServiceAccount # always required: pods reference it by name at admission time
+kind: ServiceAccount
 metadata:
   name: {{ .Chart.Name }}
   namespace: {{ $ns }}
-{{- if $k8sCfgName }}
-automountServiceAccountToken: false # external kubeconfig in use, no token needed
-{{- end }}
-{{- if empty $k8sCfgName }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -87,7 +76,6 @@ subjects:
   - kind: ServiceAccount
     name: {{ .Chart.Name }}
     namespace: {{ $ns }}
-{{- end }}
 {{- end -}}
 
 {{/*

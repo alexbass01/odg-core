@@ -188,9 +188,6 @@ ghas:
   rbac:
     rules:
       - apiGroups: [delivery-gear.gardener.cloud]
-        resources: [backlogitems]
-        verbs: [list, update, delete]
-      - apiGroups: [delivery-gear.gardener.cloud]
         resources: [logcollections]
         verbs: [create, get, update]
 issue-replicator:
