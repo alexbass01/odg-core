@@ -20,18 +20,18 @@ METRIC_REQUESTS_TOTAL = 'requests_total'
 
 # aiohttp app storage keys
 APP_REQUEST_CONCURRENCY_STARTED_SECONDS: aiohttp.web.AppKey[prometheus_client.Gauge] = (
-    aiohttp.web.AppKey('request_concurrency_started_seconds', prometheus_client.Gauge)
+    aiohttp.web.AppKey(METRIC_REQUEST_CONCURRENCY_STARTED_SECONDS, prometheus_client.Gauge)
 )
 APP_REQUEST_LATENCY_SECONDS: aiohttp.web.AppKey[prometheus_client.Histogram] = aiohttp.web.AppKey(
-    'request_latency_seconds',
+    METRIC_REQUEST_LATENCY_SECONDS,
     prometheus_client.Histogram,
 )
 APP_REQUESTS_CONCURRENCY: aiohttp.web.AppKey[prometheus_client.Gauge] = aiohttp.web.AppKey(
-    'requests_concurrency',
+    METRIC_REQUESTS_CONCURRENCY,
     prometheus_client.Gauge,
 )
 APP_REQUESTS_TOTAL: aiohttp.web.AppKey[prometheus_client.Counter] = aiohttp.web.AppKey(
-    'requests_total',
+    METRIC_REQUESTS_TOTAL,
     prometheus_client.Counter,
 )
 SLOW_REQUEST_THRESHOLD_SECONDS = 30.0
