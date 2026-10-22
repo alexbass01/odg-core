@@ -59,6 +59,12 @@ spec:
             value: /secrets
           - name: EXTENSIONS_CFG_PATH
             value: /extensions_cfg/extensions_cfg
+          {{- if default dict .Values.envVars }}
+          {{- range $key, $value := .Values.envVars }}
+          - name: {{ $key }}
+            value: {{ $value }}
+          {{- end }}
+          {{- end }}
           volumeMounts:
             - name: ocm-repo-mappings
               mountPath: /ocm_repo_mappings
