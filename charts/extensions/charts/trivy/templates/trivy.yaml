@@ -70,7 +70,6 @@ spec:
             - name: TRIVY_CACHE_DIR
               value: /cache/trivy
             {{- end }}
-            {{- include "odg.envVars" . | nindent 12 }}
           volumeMounts:
             - name: aws
               mountPath: /secrets/aws

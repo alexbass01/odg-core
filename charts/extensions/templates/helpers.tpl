@@ -11,24 +11,6 @@
 {{- end -}}
 
 {{/*
-Renders optional environment variables from `.Values.envVars` (key -> value map) as container
-`env` entries. Use with `nindent` matching the surrounding env list indentation:
-
-            env:
-              - name: K8S_TARGET_NAMESPACE
-              ...
-              {{- include "odg.envVars" . | nindent 12 }}
-*/}}
-{{- define "odg.envVars" -}}
-{{- if default dict .Values.envVars }}
-{{- range $key, $value := .Values.envVars }}
-- name: {{ $key }}
-  value: {{ $value | quote }}
-{{- end }}
-{{- end }}
-{{- end -}}
-
-{{/*
 Renders a dedicated ServiceAccount + Role + RoleBinding for a single extension workload,
 scoped to the workload's actual Kubernetes API usage. This replaces the shared catch-all
 Role bound to the `default` service account (still kept in the delivery-service chart for

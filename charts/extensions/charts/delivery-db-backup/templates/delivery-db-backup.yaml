@@ -44,7 +44,6 @@ spec:
               value: /extensions_cfg/extensions_cfg
             - name: K8S_TARGET_NAMESPACE
               value: {{ .Values.target_namespace | default .Release.Namespace }}
-            {{- include "odg.envVars" . | nindent 12 }}
             volumeMounts:
             - name: delivery-db
               mountPath: /secrets/delivery-db
