@@ -202,6 +202,114 @@ async def test_metrics_recorded_on_cancelled_handler(app, serve, http_session):
 
 
 @pytest.mark.asyncio
+async def test_unmatched_request_uses_bounded_endpoint_label(app, serve, http_session):
+    async def handler(request):
+        return aiohttp.web.Response(text='ok')
+
+    app.router.add_get('/exists', handler)
+
+    async with serve() as base_url:
+        async with http_session.get(f'{base_url}/does/not/exist') as resp:
+            assert resp.status == 404
+
+    sample = get_sample(
+        app[middleware.prometheus.APP_REQUESTS_TOTAL],
+        'requests_total',
+        endpoint=middleware.prometheus.UNMATCHED_ENDPOINT,
+        status='404',
+    )
+    assert sample.value == 1
+
+    # no series with the raw request path must have been created
+    for metric in app[middleware.prometheus.APP_REQUESTS_TOTAL].collect():
+        for sample in metric.samples:
+            assert sample.labels['endpoint'] != '/does/not/exist'
+
+
+@pytest.mark.asyncio
+async def test_parameterised_route_uses_canonical_endpoint_label(app, serve, http_session):
+    async def handler(request):
+        return aiohttp.web.Response(text='ok')
+
+    app.router.add_get('/os/{os_id}/branches', handler)
+
+    async with serve() as base_url:
+        async with http_session.get(f'{base_url}/os/debian:12/branches') as resp:
+            assert resp.status == 200
+
+    sample = get_sample(
+        app[middleware.prometheus.APP_REQUESTS_TOTAL],
+        'requests_total',
+        endpoint='/os/{os_id}/branches',
+        status='200',
+    )
+    assert sample.value == 1
+
+    # distinct parameter values must not create distinct series
+    for metric in app[middleware.prometheus.APP_REQUESTS_TOTAL].collect():
+        for sample in metric.samples:
+            assert sample.labels['endpoint'] != '/os/debian:12/branches'
+
+
+@pytest.mark.asyncio
+async def test_concurrency_started_seconds_survives_overlapping_requests(
+    app,
+    serve,
+    http_session,
+):
+    """
+    Two overlapping requests share the same (endpoint, method) labels. When the fast one
+    finishes, the start timestamp of the remaining slow request must be retained.
+    """
+    slower_entered = asyncio.Event()
+    faster_entered = asyncio.Event()
+    release_slower = asyncio.Event()
+
+    async def handler(request):
+        if 'slow' in request.query:
+            slower_entered.set()
+            await faster_entered.wait()
+            await release_slower.wait()
+            return aiohttp.web.Response(text='slow')
+        await slower_entered.wait()
+        faster_entered.set()
+        return aiohttp.web.Response(text='fast')
+
+    app.router.add_get('/shared/{name}', handler)
+
+    async with serve() as base_url:
+
+        async def slow_get():
+            async with http_session.get(f'{base_url}/shared/x?slow') as resp:
+                return resp.status
+
+        slower_request = asyncio.ensure_future(slow_get())
+
+        async with http_session.get(f'{base_url}/shared/x?fast') as resp:
+            assert resp.status == 200
+
+        # the slower request is still in flight, so the timestamp must not be cleared
+        sample = get_sample(
+            app[middleware.prometheus.APP_REQUEST_CONCURRENCY_STARTED_SECONDS],
+            'request_concurrency_started_seconds',
+            endpoint='/shared/{name}',
+            method='GET',
+        )
+        assert sample.value > 0
+
+        release_slower.set()
+        assert await slower_request == 200
+
+    sample = get_sample(
+        app[middleware.prometheus.APP_REQUEST_CONCURRENCY_STARTED_SECONDS],
+        'request_concurrency_started_seconds',
+        endpoint='/shared/{name}',
+        method='GET',
+    )
+    assert sample.value == 0
+
+
+@pytest.mark.asyncio
 async def test_concurrency_started_seconds_reset_after_request(app, serve, http_session):
     async def handler(request):
         return aiohttp.web.Response(text='ok')

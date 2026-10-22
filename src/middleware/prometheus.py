@@ -23,7 +23,8 @@ APP_REQUEST_CONCURRENCY_STARTED_SECONDS: aiohttp.web.AppKey[prometheus_client.Ga
     aiohttp.web.AppKey('request_concurrency_started_seconds', prometheus_client.Gauge)
 )
 APP_REQUEST_LATENCY_SECONDS: aiohttp.web.AppKey[prometheus_client.Histogram] = aiohttp.web.AppKey(
-    'request_latency_seconds', prometheus_client.Histogram,
+    'request_latency_seconds',
+    prometheus_client.Histogram,
 )
 APP_REQUESTS_CONCURRENCY: aiohttp.web.AppKey[prometheus_client.Gauge] = aiohttp.web.AppKey(
     'requests_concurrency',
@@ -34,6 +35,19 @@ APP_REQUESTS_TOTAL: aiohttp.web.AppKey[prometheus_client.Counter] = aiohttp.web.
     prometheus_client.Counter,
 )
 SLOW_REQUEST_THRESHOLD_SECONDS = 30.0
+
+# endpoint label used for requests that did not match any registered route
+UNMATCHED_ENDPOINT = 'unmatched'
+
+
+def endpoint_label(request: aiohttp.web.Request) -> str:
+    """
+    Return the matched route's canonical pattern (e.g. `/os/{os_id}/branches`) as endpoint
+    label. Using the raw request path would create a persistent metric series per distinct path.
+    """
+    if (resource := request.match_info.route.resource) is not None:
+        return resource.canonical
+    return UNMATCHED_ENDPOINT
 
 
 @middleware.auth.noauth
@@ -62,6 +76,10 @@ def add_prometheus_middleware(
     registry: prometheus_client.CollectorRegistry | None = None,
 ) -> aiohttp.typedefs.Middleware:
 
+    # unix timestamp per in-flight request, keyed by (endpoint, method); first entry is the
+    # oldest in-flight request. aiohttp is single-threaded, so no locking is needed.
+    unacked_requests: dict[tuple[str, str], dict[int, float]] = {}
+
     @aiohttp.web.middleware
     async def middleware(
         request: aiohttp.web.Request,
@@ -69,11 +87,19 @@ def add_prometheus_middleware(
     ) -> aiohttp.web.StreamResponse:
         start_time = datetime.datetime.now()
         start_timestamp = start_time.timestamp()
-        request.app[APP_REQUESTS_CONCURRENCY].labels(request.path, request.method).inc()
-        request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
-            request.path,
-            request.method,
-        ).set(start_timestamp)
+        endpoint = endpoint_label(request)
+        method = request.method
+        request_key = (endpoint, method)
+        unacked = unacked_requests.setdefault(request_key, {})
+        is_oldest = not unacked
+        unacked[id(request)] = start_timestamp
+
+        request.app[APP_REQUESTS_CONCURRENCY].labels(endpoint, method).inc()
+        if is_oldest:
+            request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
+                endpoint,
+                method,
+            ).set(start_timestamp)
 
         status = None
         response = None
@@ -91,29 +117,36 @@ def add_prometheus_middleware(
             status = 'error'
             raise
         finally:
+            was_oldest = next(iter(unacked), None) == id(request)
+            unacked.pop(id(request), None)
             latency_seconds = (datetime.datetime.now() - start_time).total_seconds()
 
-            request.app[APP_REQUESTS_CONCURRENCY].labels(request.path, request.method).dec()
-            request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
-                request.path,
-                request.method,
-            ).set(0)
+            request.app[APP_REQUESTS_CONCURRENCY].labels(endpoint, method).dec()
+            if was_oldest:
+                # retain the start timestamp of the oldest remaining in-flight request,
+                # or signal that no request is in flight anymore
+                oldest_timestamp = next(iter(unacked.values()), 0)
+                request.app[APP_REQUEST_CONCURRENCY_STARTED_SECONDS].labels(
+                    endpoint,
+                    method,
+                ).set(oldest_timestamp)
 
             request.app[APP_REQUEST_LATENCY_SECONDS].labels(
-                request.path,
-                request.method,
+                endpoint,
+                method,
             ).observe(latency_seconds)
 
             if status is not None:
                 request.app[APP_REQUESTS_TOTAL].labels(
-                    request.path,
-                    request.method,
+                    endpoint,
+                    method,
                     status,
                 ).inc()
 
             if latency_seconds > SLOW_REQUEST_THRESHOLD_SECONDS:
                 logger.warning(
-                    f'slow request: {request.method} {request.path} took '
+                    # %r keeps client-controlled control characters (e.g. CR/LF) escaped
+                    f'slow request: {method!r} {request.path!r} took '
                     f'{latency_seconds:.1f}s ({status=})',
                 )
 
