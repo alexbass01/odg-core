@@ -20,7 +20,6 @@ spec:
         component: migrate
     spec:
       restartPolicy: Never
-      # runs in the same namespace as the delivery-db service; no extra RBAC needed
       containers:
         - name: {{ $podName }}
           image: {{ include "image" .Values.image }}
