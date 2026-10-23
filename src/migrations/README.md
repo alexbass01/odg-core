@@ -21,6 +21,24 @@ If the job fails, the Helm release fails and the failed Job stays in the
 cluster for `kubectl logs`. This is intentional — do not add
 `hook-delete-policy`.
 
+## Running migrations repeatedly is safe
+
+Like `create_all` before it, alembic is idempotent at the level that matters:
+
+- `alembic upgrade head` on a database that is already at head is a no-op
+  (alembic compares the `alembic_version` table against the target revision
+  and runs nothing).
+- `src/migrations/bootstrap.py` is itself state-aware and may be re-run any
+  number of times; it stamps or upgrades once and then keeps no-oping.
+- Because every `helm upgrade` runs the hook Job again, schema changes
+  ordered after a release are picked up on the next rollout automatically.
+  There is no harm in redeploying the same chart version many times.
+
+Compared to `create_all`, the differences are in *what* changes are
+idempotent: `create_all` only creates missing tables (column changes on
+existing tables were silently skipped), while alembic replays each revision
+exactly once and never re-applies it.
+
 ## Day-to-day schema changes
 
 1. Edit `src/deliverydb/model.py` (add/change/remove columns or tables).
