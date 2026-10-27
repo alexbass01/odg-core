@@ -48,8 +48,6 @@ spec:
                       type: string
                     btp_endpoint:
                       type: string
-                    btp_certs_secret:
-                      type: string
                   required:
                     - base_url
                     - target_namespace
