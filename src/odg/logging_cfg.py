@@ -218,7 +218,8 @@ def configure_logging(
     # duplicate/unstructured output; FileHandlers (k8s CRD pipeline) are kept
     for handler in root_logger.handlers[:]:
         if isinstance(handler, logging.StreamHandler) and not isinstance(
-            handler, logging.FileHandler,
+            handler,
+            logging.FileHandler,
         ):
             root_logger.removeHandler(handler)
     root_logger.addHandler(hdlr=stream_handler)
