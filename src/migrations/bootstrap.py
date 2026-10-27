@@ -10,17 +10,19 @@ Usage:
 """
 
 import logging
+import os
 
 import sqlalchemy
 
 from alembic.config import main as alembic_main
+import alembic.migration
 
 import migrations
 import deliverydb.model
 
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)-5.5s %(name)s %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('odg.migrations')
 
 
 def _db_url() -> str:
@@ -54,6 +56,33 @@ def _db_url() -> str:
     return delivery_db_cfg.connection_url(namespace=namespace)
 
 
+def _current_revision(engine) -> str | None:
+    with engine.connect() as connection:
+        ctx = alembic.migration.MigrationContext.configure(connection)
+        return ctx.get_current_revision()
+
+
+def _revision_scripts() -> dict[str, str]:
+    """Return {revision_id: down_revision_id} of all checked-in alembic revisions."""
+    from alembic.script import ScriptDirectory
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option('script_location', os.path.dirname(migrations.ini_path))
+    script = ScriptDirectory.from_config(cfg)
+    return {r.revision: r.down_revision for r in script.walk_revisions()}
+
+
+def _head_revision() -> str:
+    """Resolve the head revision from checked-in files."""
+    scripts = _revision_scripts()
+    parents = set(scripts.values()) - {None}
+    heads = set(scripts) - parents
+    if len(heads) != 1:
+        raise RuntimeError(f'expected exactly 1 head, found: {heads}')
+    return next(iter(heads))
+
+
 def main() -> int:
     engine = sqlalchemy.create_engine(_db_url())
 
@@ -77,7 +106,23 @@ def main() -> int:
         logger.info('fresh database, running full upgrade to head')
         alembic_main(argv=[*argv, 'upgrade', 'head'])
 
-    logger.info('done')
+    # post-condition: the database must now reflect checked-in head.
+    # This catches silent failures, in particular cases where an open pre-existing
+    # transaction caused alembic's begin_transaction() to silently issue no COMMIT.
+    logger.info('running post-check: comparing database revision to checked-in head')
+    applied = _current_revision(engine)
+    expected = _head_revision()
+    if applied != expected:
+        logger.error(
+            'post-check failed: database is at %s, expected %s; the migration was not committed.',
+            applied,
+            expected,
+        )
+        raise RuntimeError(
+            f'database is at {applied}, expected {expected}; the migration was not committed.',
+        )
+
+    logger.info('post-check passed: database is at %s (head)', applied)
     return 0
 
 

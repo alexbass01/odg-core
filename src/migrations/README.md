@@ -5,9 +5,16 @@ schema owned by `src/deliverydb/model.py`.
 
 ## How migrations are applied in production
 
-`charts/delivery-service/templates/migration-job.yaml` defines a Helm
-pre-install/pre-upgrade hook that runs `python3 -m migrations.bootstrap` on
-every `helm install` / `helm upgrade`.
+The delivery-service Deployment has an `initContainers` entry
+(`delivery-service-migrate`, see
+`charts/delivery-service/templates/deployment.yaml`) that runs
+`python3 -m migrations.bootstrap` before every pod start. Kubernetes retries
+the initContainer until it succeeds, so the main container never sees a
+database that is not yet migrated. An earlier version used a Helm hook Job;
+that does not work with the ODG operator, which deploys via `helm template`
+plus gardener-resource-manager (see
+`docs/alembic-migration-ordering.md`), so the hook ordering was never
+realised.
 
 `bootstrap.py` auto-detects the database state:
 
@@ -17,9 +24,13 @@ every `helm install` / `helm upgrade`.
 | has tables but no `alembic_version` (legacy `create_all` era) | `stamp head` |
 | empty                                       | `upgrade head`  |
 
-If the job fails, the Helm release fails and the failed Job stays in the
-cluster for `kubectl logs`. This is intentional — do not add
-`hook-delete-policy`.
+Concurrent replicas (e.g. during a rolling update where several init
+containers run at once) are serialised by a Postgres advisory lock in
+`env.py`; waiters then no-op at `upgrade head`. The lock is session-scoped,
+so a crashed migration releases it automatically when its connection drops.
+
+If a pod is stuck in `Init:CrashLoopBackOff`, check its logs:
+`kubectl logs <pod> -c delivery-service-migrate`.
 
 ## Running migrations repeatedly is safe
 
@@ -30,9 +41,9 @@ Like `create_all` before it, alembic is idempotent at the level that matters:
   and runs nothing).
 - `src/migrations/bootstrap.py` is itself state-aware and may be re-run any
   number of times; it stamps or upgrades once and then keeps no-oping.
-- Because every `helm upgrade` runs the hook Job again, schema changes
-  ordered after a release are picked up on the next rollout automatically.
-  There is no harm in redeploying the same chart version many times.
+- Because every pod start runs the initContainer, schema changes ordered
+  after a release are picked up on the next rollout automatically. There is
+  no harm in redeploying the same chart version many times.
 
 Compared to `create_all`, the differences are in *what* changes are
 idempotent: `create_all` only creates missing tables (column changes on
@@ -64,8 +75,8 @@ exactly once and never re-applies it.
    new_column_name=...)`), nor data migrations.
 
 5. Commit model change and revision file together. The migration is applied
-   automatically the next time the delivery-service chart is installed or
-   upgraded.
+   automatically the next time delivery-service pods are (re)started — the
+   initContainer runs on every pod start.
 
 ## Local checks
 
@@ -101,15 +112,16 @@ For comparing an existing deployment's schema to the baseline, use
   `src/deliverydb/__init__.py`. The schema is owned by Alembic alone. Adding
   a `create_all` back would mask drift risk again (works in dev, burns you in
   prod).
-- **Failed Helm hook Jobs stay around**: `helm upgrade` will refuse to run
-  again until the failed Job is deleted
-  (`kubectl delete job delivery-service-migrate -n odg`). This is by design,
-  so failures are visible in `helm` and `kubectl` output — there is no
-  `hook-delete-policy` annotation.
-- **NetworkPolicies**: the Job reuses the `app: delivery-service` pod label
-  so it is covered by the existing `allow-egress-from-delivery-service`
-  NetworkPolicy.  Renaming the label requires adjusting the chart
-  accordingly.
-- **Secret rotation**: the Job mounts `secret-factory-delivery-db`. If the
-  bootstrap reports secret-related errors, verify the Secret exists and has
-  exactly one element (`kubectl get secret secret-factory-delivery-db -o yaml`).
+- **Failed migrations surface as `Init:CrashLoopBackOff`**: the pod stays not
+  ready until the initContainer succeeds. Fix the cause; Kubernetes retries
+  automatically.
+- **NetworkPolicies**: the initContainer runs in the delivery-service pod, so
+  it is covered by the same NetworkPolicies as the main container. No extra
+  network configuration required.
+- **Secret rotation**: the initContainer mounts `secret-factory-delivery-db`.
+  If the bootstrap reports secret-related errors, verify the Secret exists and
+  has exactly one element
+  (`kubectl get secret secret-factory-delivery-db -o yaml`).
+- **Advisory lock**: `env.py` takes `pg_advisory_lock` before every migration
+  run. If you add other tools that use advisory locks against the delivery-db
+  (rare), pick a different lock key there.

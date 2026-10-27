@@ -1,3 +1,4 @@
+import logging
 import os
 from logging.config import fileConfig
 
@@ -9,6 +10,12 @@ from deliverydb.model import Base
 
 config = context.config
 target_metadata = Base.metadata
+
+logger = logging.getLogger('odg.migrations')
+
+# advisory-lock key used to serialize migrations. Fixed 64-bit int, arbitrary choice
+# (ascii 'odgmig'). Must only not collide with other pg_advisory_lock users on this db.
+ADVISORY_LOCK_KEY = 0x6F64676D6967
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -76,14 +83,45 @@ def run_migrations_online() -> None:
     )
 
     with engine.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            include_object=_include_object,
+        # block until no other migration is running (init-containers/parallel rollouts).
+        # lock is released when the connection closes, also on crash.
+        #
+        # IMPORTANT: acquire the lock in autocommit mode (via connection.commit() right
+        # after) so as not to leave an open transaction for Alembic. Alembic's
+        # begin_transaction() calls connection.get_transaction() via _safe_begin_.*;
+        # an already-open transaction would silently swallow commits in some driver
+        # combinations (observed: psycopg3 + SQLAlchemy 2 + alembic 1.20).
+        logger.info('acquiring advisory lock key=%s', ADVISORY_LOCK_KEY)
+        connection.execute(
+            sqlalchemy.text('select pg_advisory_lock(:key)'),
+            {'key': ADVISORY_LOCK_KEY},
         )
+        # close the autobegun transaction so alembic sees a clean connection
+        connection.commit()
 
-        with context.begin_transaction():
-            context.run_migrations()
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                include_object=_include_object,
+            )
+
+            with context.begin_transaction():
+                ctx = context.get_context()
+                current = ctx.get_current_revision()
+                logger.info('database is at revision %s, running migrations', current)
+                context.run_migrations()
+                logger.info('migrations applied, now at revision %s', ctx.get_current_revision())
+        finally:
+            connection.execute(
+                sqlalchemy.text('select pg_advisory_unlock(:key)'),
+                {'key': ADVISORY_LOCK_KEY},
+            )
+            # commit the unlock so the lock-release statement itself does not stay
+            # in an open transaction when the connection closes (NullPool -> fresh
+            # connection per use, so the close would roll it back otherwise)
+            connection.commit()
+            logger.info('released advisory lock key=%s', ADVISORY_LOCK_KEY)
 
 
 if context.is_offline_mode():
