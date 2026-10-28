@@ -14,9 +14,10 @@ Works alongside existing infrastructure:
   only re-formats the stdlib pipeline via ProcessorFormatter)
 - third-party stdlib loggers (uvicorn, aiohttp, kubernetes, ...) are routed into
   the same pipeline, see `route_foreign_loggers()`
-- `k8s.logging.configure_kubernetes_logging()` may be called AFTER
-  `configure_logging()` to additionally attach its FileHandlers for the
-  LogCollection CRD pipeline; do not attach its JSONFormatter to stdout handlers.
+- `k8s.logging.configure_kubernetes_logging()` may be called BEFORE
+  `configure_logging()` to keep its FileHandlers attached for the LogCollection
+  CRD pipeline; pod stdout logs then use the structlog format, the CRD content
+  the legacy frontend format.
 
 Field naming follows OpenTelemetry semantic conventions
 (https://opentelemetry.io/docs/specs/semconv/general/naming/):
@@ -323,7 +324,8 @@ def configure_logging(
 
     root_logger = logging.getLogger()
     # drop pre-configured stream handlers (e.g. from basicConfig) to avoid
-    # duplicate/unstructured output; FileHandlers (k8s CRD pipeline) are kept
+    # duplicate/unstructured output; FileHandlers attached before this call
+    # (k8s CRD pipeline, see k8s.logging.configure_kubernetes_logging) are kept
     for handler in root_logger.handlers[:]:
         if isinstance(handler, logging.StreamHandler) and not isinstance(
             handler,
