@@ -90,6 +90,29 @@ def test_sensitive_query_param_in_url_is_scrubbed():
     assert 'locale=en' in entry[lc.URL_QUERY]
 
 
+def test_urllib3_prefix_filter_applied_to_preexisting_file_handler(tmp_path):
+    """urllib3 DEBUG chatter must not spam LogCollection CRD files"""
+    import k8s.logging
+
+    log_file = tmp_path / 'crd.log'
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(k8s.logging.LogCollectionFormatter())
+    file_handler.setLevel(logging.DEBUG)
+    logging.root.addHandler(file_handler)
+    try:
+        _configured_logging()
+
+        logging.getLogger('urllib3.connectionpool').warning('connectionpool noise')
+        logging.getLogger('something.else').warning('kept')
+
+        content = log_file.read_text()
+        assert 'connectionpool noise' not in content
+        assert 'kept' in content
+    finally:
+        logging.root.removeHandler(file_handler)
+        file_handler.close()
+
+
 def test_suppressed_logger_is_dropped():
     captured = _configured_logging()
 

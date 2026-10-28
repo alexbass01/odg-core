@@ -180,6 +180,17 @@ def merge_extra_fields(logger, method_name: str, event_dict: dict) -> dict:
     return event_dict
 
 
+class SuppressLoggerPrefixesFilter(logging.Filter):
+    """Drop records whose logger name starts with one of the given prefixes."""
+
+    def __init__(self, logger_prefixes: collections.abc.Iterable[str]):
+        super().__init__()
+        self.logger_prefixes = tuple(logger_prefixes)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.name.startswith(self.logger_prefixes)
+
+
 class SuppressLoggerNamesFilter(logging.Filter):
     """Drop records from given logger names entirely."""
 
@@ -332,6 +343,11 @@ def configure_logging(
             logging.FileHandler,
         ):
             root_logger.removeHandler(handler)
+        elif isinstance(handler, logging.FileHandler):
+            # FileHandlers (LogCollection CRD pipeline, attached before this call) do
+            # not get the SuppressLoggerNamesFilter the stdout handler gets: the CRD
+            # keeps DEBUG-level records of suppressed loggers for troubleshooting.
+            handler.addFilter(SuppressLoggerPrefixesFilter(logger_prefixes=('urllib3',)))
     root_logger.addHandler(hdlr=stream_handler)
     root_logger.setLevel(level=log_level)
 

@@ -43,6 +43,7 @@ EXTENSION_MODULES = [
     'malware.__main__',
     'odg_operator.__main__',
     'freshclam.__main__',
+    'trivy_extension.__main__',
 ]
 
 
