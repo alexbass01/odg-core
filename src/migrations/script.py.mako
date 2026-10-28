@@ -18,9 +18,29 @@ branch_labels: str | Sequence[str] | None = ${repr(branch_labels)}
 depends_on: str | Sequence[str] | None = ${repr(depends_on)}
 
 
-def upgrade() -> None:
+def schema_upgrade() -> None:
     ${upgrades if upgrades else "pass"}
 
 
-def downgrade() -> None:
+def data_upgrade() -> None:
+    # backfill data for the schema change here (or leave as pass)
+    pass
+
+
+def schema_downgrade() -> None:
     ${downgrades if downgrades else "pass"}
+
+
+def data_downgrade() -> None:
+    # undo data backfills here, if needed (usually: pass)
+    pass
+
+
+def upgrade() -> None:
+    schema_upgrade()
+    data_upgrade()
+
+
+def downgrade() -> None:
+    data_downgrade()
+    schema_downgrade()

@@ -92,9 +92,6 @@ class DBCache(Base):
     size = sa.Column(sa.Integer)
     value = sa.Column(sa.LargeBinary)
 
-    # test migration: empty optional field to exercise alembic upgrade path
-    test_migration_marker = sa.Column(sa.String, nullable=True)
-
 
 class RoleBindingOriginType(enum.StrEnum):
     GITHUB = 'github'
