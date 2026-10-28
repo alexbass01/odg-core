@@ -36,8 +36,11 @@ Standard structlog output keys (`timestamp`, `level`, `event`) map to OTel's
 names as most log pipelines (Loki, Fluent Bit, Splunk HEC) recognise them.
 """
 
+import collections.abc
 import logging
+import re
 import sys
+import typing
 
 import structlog
 
@@ -60,6 +63,33 @@ NETWORK_PEER_ADDRESS = 'network.peer.address'
 EXCEPTION_TYPE = 'exception.type'
 EXCEPTION_MESSAGE = 'exception.message'
 EXCEPTION_STACKTRACE = 'exception.stacktrace'
+
+# keys whose values must never appear in logs (third-party loggers sometimes
+# pass them via `extra=`; e.g. oci.client.request_logger sends Authorization
+# headers including bearer tokens)
+SENSITIVE_KEYS = frozenset(
+    {
+        'authorization',
+        'proxy-authorization',
+        'x-api-key',
+        'x-auth-token',
+        'cookie',
+        'set-cookie',
+    },
+)
+# query params whose values are scrubbed from logged URLs (e.g. access logs)
+SENSITIVE_QUERY_PARAMS = ('token', 'secret', 'password', 'key', 'code', 'credential')
+SENSITIVE_QUERY_PARAMS_RE = re.compile(
+    rf'(?P<name>{"|".join(SENSITIVE_QUERY_PARAMS)})=(?P<value>[^&\s]+)',
+    re.IGNORECASE,
+)
+
+# credentials embedded in plain message strings, e.g. some loggers format an
+# `Authorization: Bearer ...` header into the message itself
+BEARER_TOKEN_RE = re.compile(r'(?<=Bearer )[A-Za-z0-9\-\._~+/]{16,}={0,2}')
+BASIC_CREDENTIALS_RE = re.compile(r'(?<=Basic )[A-Za-z0-9+/]{16,}={0,2}')
+
+SENSITIVE_REPLACEMENT = '***'
 
 
 def merge_extra_fields(logger, method_name: str, event_dict: dict) -> dict:
@@ -125,16 +155,89 @@ def merge_extra_fields(logger, method_name: str, event_dict: dict) -> dict:
         if key in event_dict:
             continue
 
+        if key.lower() in SENSITIVE_KEYS:
+            event_dict[key] = _replace_sensitive(value)
+            continue
+
         otel_key = otel_key_map.get(key, key)
+
+        if isinstance(value, str):
+            value = _scrub_string(value)
 
         # unpack nested dicts (e.g. from aiohttp) one level deep
         if isinstance(value, dict):
             for inner_key, inner_value in value.items():
+                if inner_key.lower() in SENSITIVE_KEYS:
+                    event_dict[inner_key] = _replace_sensitive(inner_value)
+                    continue
                 inner_otel_key = otel_key_map.get(inner_key, inner_key)
                 if inner_otel_key not in event_dict:
                     event_dict[inner_otel_key] = inner_value
         else:
             event_dict[otel_key] = value
+
+    return event_dict
+
+
+class SuppressLoggerNamesFilter(logging.Filter):
+    """Drop records from given logger names entirely."""
+
+    def __init__(self, logger_names: collections.abc.Iterable[str]):
+        super().__init__()
+        self.logger_names = frozenset(logger_names)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.name not in self.logger_names
+
+
+# OCI request logs ship in cc-utils at DEBUG level and leak
+# "Authorization"/"User-Agent" headers via record extras. Cc-utils is in
+# control, and scrubbing the fields would remove the diagnostic value the
+# request logger is supposed to add in the first place — so drop them.
+DEFAULT_SUPPRESSED_LOGGERS = ('oci.client.request_logger',)
+
+
+def _replace_sensitive(value):
+    if isinstance(value, str):
+        return SENSITIVE_REPLACEMENT
+    if isinstance(value, dict):
+        return {key: _replace_sensitive(v) for key, v in value.items()}
+
+    return value
+
+
+def scrub_sensitive_fields(logger, method_name: str, event_dict: dict) -> dict:
+    """
+    Replace values of well-known credential keys. Only string values are
+    replaced outright (a key coincidentally named e.g. `token_count` with an
+    int value is kept); dicts are scrubbed recursively so that e.g.
+    extra={'headers': {'Authorization': ...}} is fully stripped.
+    """
+    for key in list(event_dict.keys()):
+        if key.lower() in SENSITIVE_KEYS:
+            event_dict[key] = _replace_sensitive(event_dict[key])
+
+    return event_dict
+
+
+def _scrub_string(value: str) -> str:
+    value = SENSITIVE_QUERY_PARAMS_RE.sub(lambda m: f'{m["name"]}={SENSITIVE_REPLACEMENT}', value)
+    value = BEARER_TOKEN_RE.sub(SENSITIVE_REPLACEMENT, value)
+    value = BASIC_CREDENTIALS_RE.sub(SENSITIVE_REPLACEMENT, value)
+
+    return value
+
+
+def scrub_string_values(logger, method_name: str, event_dict: dict) -> dict:
+    """
+    Scrub credential patterns from string values (and the event message
+    itself), regardless of key name. Catch-all for loggers that format
+    credentials into plain strings; format-based, not semantic — it misses
+    non-standard formats and may replace lookalikes.
+    """
+    for key, value in event_dict.items():
+        if isinstance(value, str):
+            event_dict[key] = _scrub_string(value)
 
     return event_dict
 
@@ -146,6 +249,7 @@ _shared_processors: list = [
     structlog.processors.TimeStamper(fmt='iso', utc=True),
     structlog.processors.StackInfoRenderer(),
     structlog.processors.format_exc_info,
+    scrub_sensitive_fields,
 ]
 
 
@@ -153,6 +257,7 @@ def configure_logging(
     log_level: int = logging.INFO,
     json_logs: bool = True,
     service_name: str | None = None,
+    stream: typing.TextIO | None = None,
 ) -> None:
     """
     Configure root stdlib logger + structlog for this process.
@@ -203,15 +308,18 @@ def configure_logging(
         # pass through the same processors before rendering. merge_extra_fields
         # additionally forwards LogRecord extras (e.g. aiohttp access-log
         # fields) into the event dict.
-        foreign_pre_chain=[*processors, merge_extra_fields],
+        # merge_extra_fields must run before scrub_string_values so extras
+        # merged into the event dict get string-scrubbed as well
+        foreign_pre_chain=[*processors, merge_extra_fields, scrub_string_values],
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             renderer,
         ],
     )
 
-    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    stream_handler = logging.StreamHandler(stream=stream or sys.stdout)
     stream_handler.setFormatter(fmt=formatter)
+    stream_handler.addFilter(SuppressLoggerNamesFilter(logger_names=DEFAULT_SUPPRESSED_LOGGERS))
 
     root_logger = logging.getLogger()
     # drop pre-configured stream handlers (e.g. from basicConfig) to avoid
