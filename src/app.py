@@ -8,8 +8,6 @@ import os
 import aiohttp.web
 import aiohttp_swagger3
 
-import ci.log
-
 import artefacts
 import blobstore.blob
 import compliance_tests
@@ -36,7 +34,6 @@ import service_extensions
 import special_component
 import sprints
 
-ci.log.configure_default_logging(print_thread_id=True)
 logger = logging.getLogger(__name__)
 
 own_dir = os.path.abspath(os.path.dirname(__file__))

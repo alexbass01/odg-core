@@ -9,7 +9,12 @@ import starlette.routing
 import starlette.staticfiles
 import uvicorn
 
+import odg.logging_cfg
 import paths
+
+
+odg.logging_cfg.configure_logging(service_name='freshclam')
+odg.logging_cfg.route_foreign_loggers('uvicorn', 'uvicorn.access', 'uvicorn.error')
 
 
 status_file = os.path.join('/', 'freshclam', 'status')
@@ -40,7 +45,7 @@ def start_server(path, directory, port, debug=False):
     f = starlette.staticfiles.StaticFiles(directory=directory)
     app.mount(path, f)
 
-    uvicorn.run(app, host='0.0.0.0', port=port)
+    uvicorn.run(app, host='0.0.0.0', port=port, log_config=None)
 
 
 def main():

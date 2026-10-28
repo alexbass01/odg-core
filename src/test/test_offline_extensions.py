@@ -38,6 +38,11 @@ EXTENSION_MODULES = [
     'osid_extension.__main__',
     'responsibles_extension.__main__',
     'sla_violation_profiler_extension.__main__',
+    'bdba_extension.__main__',
+    'issue_replicator.__main__',
+    'malware.__main__',
+    'odg_operator.__main__',
+    'freshclam.__main__',
 ]
 
 
@@ -73,6 +78,24 @@ def test_no_ext_modules_break_imports_via_service_name_injection():
 
     record_factory = logging.getLogRecordFactory()
     assert callable(record_factory)
+
+
+def test_batch_b_modules_emit_json_with_correct_service_name(tmp_path):
+    """spot-checks Batch B extensions: bdba_extension, issue_replicator"""
+    import importlib
+
+    importlib.import_module('bdba_extension.__main__')
+    importlib.import_module('issue_replicator.__main__')
+
+    captured = io.StringIO()
+    lc.configure_logging(json_logs=True, service_name='test-batch-b', stream=captured)
+
+    logging.getLogger('verify-b').warning('batch-b probe')
+
+    line = captured.getvalue().strip().splitlines()[-1]
+    entry = json.loads(line)
+    assert entry['event'] == 'batch-b probe'
+    assert entry['service.name'] == 'test-batch-b'
 
 
 def test_subprocess_isolation_of_extension_logging(tmp_path):
