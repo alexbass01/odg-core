@@ -2,10 +2,25 @@ import dataclasses
 import io
 import json
 import logging
+import sys
+import threading
+
+import pytest
 
 import aiohttp.web_log
 
 import odg.logging_cfg as lc
+
+
+@pytest.fixture
+def preserve_excepthooks():
+    """configure_logging replaces sys.excepthook and threading.excepthook
+    globally; restore them so later tests run with the original hooks."""
+    sys_hook = sys.excepthook
+    threading_hook = threading.excepthook
+    yield
+    sys.excepthook = sys_hook
+    threading.excepthook = threading_hook
 
 
 def _configured_logging(**kwargs) -> io.StringIO:
@@ -25,6 +40,59 @@ def _configured_logging(**kwargs) -> io.StringIO:
 def _log_lines(captured: io.StringIO) -> list[dict]:
     captured.seek(0)
     return [json.loads(line) for line in captured if line.strip()]
+
+
+def test_unhandled_main_thread_exception_goes_through_structlog(preserve_excepthooks):
+    captured = _configured_logging()
+
+    try:
+        raise RuntimeError('boom main')
+    except RuntimeError as e:
+        sys.excepthook(type(e), e, e.__traceback__)
+
+    (entry,) = _log_lines(captured)
+    assert entry['event'] == 'unhandled exception in main thread; process will exit'
+    assert 'boom main' in entry['exception']
+    assert 'RuntimeError' in entry['exception']
+    assert entry['service.name'] == 'test-service'
+    assert entry['level'] == 'critical'
+
+
+def test_unhandled_daemon_thread_exception_goes_through_structlog(preserve_excepthooks):
+    captured = _configured_logging()
+
+    class FakeThread:
+        name = 'worker-7'
+
+    try:
+        raise ValueError('boom thread')
+    except ValueError:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        args = threading.ExceptHookArgs((exc_type, exc_value, exc_tb, FakeThread()))
+        threading.excepthook(args)
+
+    (entry,) = _log_lines(captured)
+    assert entry['event'] == 'unhandled exception in worker-7; process will exit'
+    assert 'boom thread' in entry['exception']
+    assert 'ValueError' in entry['exception']
+
+
+def test_keyboardinterrupt_and_systemexit_pass_through_to_previous_hook(preserve_excepthooks):
+    """Ctrl+C and sys.exit must NOT be rerouted to JSON, otherwise interactive
+    Ctrl+C would print a structured traceback instead of silently exiting, and
+    sys.exit() would look like a crash."""
+    passthrough = []
+
+    def sentinel_prev(exc_type, exc_value, exc_tb):
+        passthrough.append(exc_type)
+
+    sys.excepthook = sentinel_prev  # becomes 'previous' once configure swaps it
+    _configured_logging()
+
+    for exc in (KeyboardInterrupt(), SystemExit(0)):
+        sys.excepthook(type(exc), exc, exc.__traceback__)
+
+    assert passthrough == [KeyboardInterrupt, SystemExit]
 
 
 def test_stdlib_logger_emits_json_with_service_name():

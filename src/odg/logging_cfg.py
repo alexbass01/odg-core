@@ -41,6 +41,7 @@ import collections.abc
 import logging
 import re
 import sys
+import threading
 import typing
 
 import structlog
@@ -265,6 +266,44 @@ _shared_processors: list = [
 ]
 
 
+def _install_excepthook(logger_name: str = 'unhandled') -> None:
+    """
+    Route unhandled exceptions (main thread and daemon threads) through the
+    configured structlog pipeline so the process's final crash record is JSON.
+
+    KeyboardInterrupt and SystemExit are delegated to the previous hook to keep
+    Ctrl+C and sys.exit() semantics.
+    """
+    previous_sys_hook = sys.excepthook
+    previous_threading_hook = threading.excepthook
+
+    def _log_unhandled(exc_type, exc_value, exc_tb, thread_name: str | None) -> None:
+        logging.getLogger(logger_name).critical(
+            f'unhandled exception in {thread_name or "main thread"}; process will exit',
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
+
+    def sys_hook(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+            previous_sys_hook(exc_type, exc_value, exc_tb)
+            return
+        _log_unhandled(exc_type, exc_value, exc_tb, thread_name=None)
+
+    def threading_hook(args: threading.ExceptHookArgs):
+        if issubclass(args.exc_type, (KeyboardInterrupt, SystemExit)):
+            previous_threading_hook(args)
+            return
+        _log_unhandled(
+            args.exc_type,
+            args.exc_value,
+            args.exc_traceback,
+            thread_name=args.thread.name if args.thread else None,
+        )
+
+    sys.excepthook = sys_hook
+    threading.excepthook = threading_hook
+
+
 def configure_logging(
     log_level: int = logging.INFO,
     json_logs: bool = True,
@@ -277,6 +316,9 @@ def configure_logging(
     Set `json_logs=False` for local development (human-readable console output).
     `service_name`, if given, is added to every log entry as `service.name`
     (OTel semantic convention; use the extension/service name, e.g. 'malware').
+
+    Also installs a `sys.excepthook`/`threading.excepthook` that routes
+    otherwise-silent unhandled exceptions through the structlog pipeline.
     """
     processors = list(_shared_processors)
 
@@ -361,6 +403,8 @@ def configure_logging(
         wrapper_class=structlog.stdlib.BoundLogger,
         cache_logger_on_first_use=True,
     )
+
+    _install_excepthook()
 
 
 def http_access_log_extra(
