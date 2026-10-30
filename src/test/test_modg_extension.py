@@ -113,6 +113,53 @@ def test_extensions(extension_definitions):
         'foo': 'bar.default-domain.com',
     }
 
+    # value_type=boolean yields real bools regardless of source representation,
+    # so helm chart conditions and boolean-typed schema fields validate.
+    for src, expected in (
+        (True, True),
+        (False, False),
+        ('True', True),
+        ('False', False),
+        ('true', True),
+        ('false', False),
+        ('1', True),
+        ('0', False),
+        ('yes', True),
+        ('no', False),
+        ('on', True),
+        ('off', False),
+        ('', False),
+    ):
+        assert (
+            odgu.template_and_resolve_jsonpath(
+                value='${flag}',
+                jsonpaths={},
+                substitution_context={'flag': src},
+                value_type=odgm.ValueType.BOOLEAN,
+            )
+            is expected
+        ), (src, expected)
+
+    # unparseable values raise so misconfigurations are loud, not silently truthy/falsy
+    with pytest.raises(ValueError):
+        odgu.template_and_resolve_jsonpath(
+            value='${flag}',
+            jsonpaths={},
+            substitution_context={'flag': 'maybe'},
+            value_type=odgm.ValueType.BOOLEAN,
+        )
+
+    # non-boolean strings pass through untouched
+    assert (
+        odgu.template_and_resolve_jsonpath(
+            value='${host}',
+            jsonpaths={},
+            substitution_context={'host': 'my-domain.com'},
+            value_type=odgm.ValueType.PYTHON_STRING_TEMPLATE,
+        )
+        == 'my-domain.com'
+    )
+
     missing = set(
         odgc.iter_missing_dependencies(
             requested=(sb,),
