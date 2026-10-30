@@ -45,18 +45,6 @@ def parse_args():
     parser.add_argument('--productive', action='store_true', default=False)
     parser.add_argument('--port', default=5000, type=int)
     parser.add_argument('--max-workers', default=4, type=int)
-    parser.add_argument(
-        '--json-logs',
-        dest='json_logs',
-        action='store_true',
-        default=True,
-        help='emit logs as JSON (default; use --no-json-logs for human-readable output)',
-    )
-    parser.add_argument(
-        '--no-json-logs',
-        dest='json_logs',
-        action='store_false',
-    )
     parser.add_argument('--shortcut-auth', action='store_true', default=False)
     parser.add_argument('--delivery-db-url', default=None)
     parser.add_argument('--cache-dir', default=default_cache_dir)
@@ -420,10 +408,7 @@ async def initialise_app():
 async def run_app():
     parsed_arguments = parse_args()
 
-    odg.logging_cfg.configure_logging(
-        json_logs=parsed_arguments.json_logs,
-        service_name='delivery-service',
-    )
+    odg.logging_cfg.configure_logging(service_name='delivery-service')
 
     port = parsed_arguments.port
 

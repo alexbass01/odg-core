@@ -94,6 +94,20 @@ def test_message_over_10k_is_capped(tmp_path, monkeypatch):
     assert 'too large' in entry['message'].lower()
 
 
+def test_special_chars_never_break_file_parsing(tmp_path, monkeypatch):
+    """Regression: values were f-string-interpolated unescaped into JSON, so a
+    quote or backslash in any field corrupted the whole log file (all entries
+    discarded by read_logs_and_remove's JSONDecodeError branch)."""
+    _setup_crd_handlers(tmp_path, monkeypatch)
+
+    logger = logging.getLogger('weird"name\\with\nspecials')
+    logger.error('quote " backslash \\ newline \n tab \t unicode äöü €')
+
+    (entry,) = kl.read_logs_and_remove(logging.ERROR)
+    assert entry['name'] == 'weird"name\\with\nspecials'
+    assert 'quote " backslash \\ newline' in entry['message']
+
+
 def test_read_logs_and_remove_roundtrip_still_parses(tmp_path, monkeypatch):
     _setup_crd_handlers(tmp_path, monkeypatch)
 

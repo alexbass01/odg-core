@@ -1,18 +1,18 @@
 """
-Offline smoke: exercising the Batch A extensions' logging paths would normally
-require a Kind cluster + registry + secrets. This test verifies what can be
-verified without infra:
+Offline smoke: exercising the extensions' logging paths would normally require
+a Kind cluster + registry + secrets. This test verifies what can be verified
+without infra:
 
 1. Each migrated extension imports cleanly.
 2. `odg.logging_cfg.configure_logging(service_name=...)` produces JSON on stdout.
 3. `k8s.logging.configure_kubernetes_logging()` produces CRD-shaped files.
 4. The CRD format preserves the odg-ui contract keys + a parseable timestamp.
 
-NOTE: `configure_kubernetes_logging()` is intentionally NOT called in the smoke
-fixture: it's called at import time of each extension module and its FileHandlers
-are already attached to the root logger. The `configure_logging()` calls below
-only add stdout handling, so we check the *stdout* format here and rely on the
-dedicated contract test (`test_log_collection_contract.py`) for the CRD format.
+NOTE: importing any extension module calls `k8s.logging.configure_kubernetes_logging()`
+as a side effect, attaching CRD FileHandlers to the root logger. The tests below
+therefore do NOT call it again; their `configure_logging()` calls only configure
+stdout/structlog, so CRD-shape verification lives in the dedicated contract test
+(`test_log_collection_contract.py`).
 """
 
 import importlib
@@ -81,8 +81,9 @@ def test_no_ext_modules_break_imports_via_service_name_injection():
     assert callable(record_factory)
 
 
-def test_batch_b_modules_emit_json_with_correct_service_name(tmp_path):
-    """spot-checks Batch B extensions: bdba_extension, issue_replicator"""
+def test_modules_with_own_main_emit_json_with_correct_service_name(tmp_path):
+    """spot-checks package-style extensions (modules with a __main__.py):
+    bdba_extension, issue_replicator"""
     import importlib
 
     importlib.import_module('bdba_extension.__main__')

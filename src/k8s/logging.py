@@ -1,7 +1,6 @@
 import http
 import json
 import logging
-import textwrap
 import threading
 import time
 import traceback
@@ -300,20 +299,25 @@ class LogCollectionFormatter(logging.Formatter):
         if record.stack_info:
             record.message = f'{record.message}\n{self.formatStack(record.stack_info)}'
 
-        message = json.dumps(record.message)
+        message = record.message
 
         if (size := len(message.encode('utf-8'))) > 10000:
-            message = json.dumps(f'Request entity body is too large: {size} bytes')
+            message = f'Request entity body is too large: {size} bytes'
 
-        # keep keys identical to the legacy format the odg-ui LogTab expects
-        return textwrap.dedent(f"""\
-            {{
-                "timestamp": "{timestamp}",
-                "name": "{record.name}",
-                "logLevel": "{record.levelname}",
-                "thread": "{record.threadName}",
-                "message": {message}
-            }},""")
+        # keep keys identical to the legacy format the odg-ui LogTab expects;
+        # trailing comma is part of the fragments contract (see read_logs_and_remove)
+        return (
+            json.dumps(
+                {
+                    'timestamp': timestamp,
+                    'name': record.name,
+                    'logLevel': record.levelname,
+                    'thread': record.threadName,
+                    'message': message,
+                },
+            )
+            + ','
+        )
 
 
 def configure_kubernetes_logging():
