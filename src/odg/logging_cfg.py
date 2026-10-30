@@ -451,6 +451,34 @@ def aiohttp_access_logger_class(
     return ODGAccessLogger
 
 
+def quiet_uvicorn_access_log(
+    logger_name: str = 'uvicorn.access',
+    path_prefixes: tuple[str, ...] = ('/readiness', '/healthz', '/ready'),
+) -> None:
+    """
+    Drop access-log records on `logger_name` whose message looks like a
+    uvicorn access line for a 2xx/3xx probe to one of `path_prefixes`.
+    Non-probe methods (POST/PUT/etc.), 4xx/5xx responses, and other paths
+    are unaffected.
+
+    Use for uvicorn-based services (aiohttp users get this via
+    `aiohttp_access_logger_class(quiet_path_prefixes=...)` instead).
+    """
+    import re
+
+    methods = '|'.join(('GET', 'HEAD', 'OPTIONS'))
+    paths_re = '|'.join(re.escape(p) for p in path_prefixes)
+    pattern = re.compile(
+        rf'"(?:{methods}) (?:{paths_re})(?:[ ?][^"]*)? HTTP/[^"]+" [23]\d{{2}}\b',
+    )
+
+    class QuietProbeFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return pattern.search(record.getMessage() or '') is None
+
+    logging.getLogger(logger_name).addFilter(QuietProbeFilter())
+
+
 def route_foreign_loggers(*logger_names: str) -> None:
     """
     Route third-party stdlib loggers into the root (structlog) pipeline by
